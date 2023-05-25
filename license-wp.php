@@ -3,7 +3,7 @@
     Plugin Name: License WP - WordPress Premium Licensing for WooCommerce
     Plugin URI: https://wordpress.org/plugins/license-wp/
     Description: A simple solution to plugin licencing. Define API Products separately, then sell licenses as products in WooCommerce which grant access to api products.
-    Version: 1.0.0
+    Version: 1.0.1
     Author: Mike Jolley & Barry Kooij
     Author URI: http://www.mikeandbarry.com
     License: GPL v2
@@ -51,6 +51,9 @@ function __load_license_wp() {
 	// fetch instance
 	license_wp();
 }
+
+define( 'License_WP_File', __FILE__ );
+define( 'License_WP_Dir', __DIR__ );
 
 // check PHP version
 $updatePhp = new WPUpdatePhp( '5.3.0' );
