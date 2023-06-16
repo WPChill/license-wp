@@ -15,6 +15,7 @@ class Activation {
 	public function setup() {
 		add_action( 'woocommerce_api_wp_plugin_licencing_activation_api', array( $this, 'handle' ) );
 		add_action( 'woocommerce_api_license_wp_api_activation', array( $this, 'handle' ) );
+		add_action( 'woocommerce_api_license_wp_api_status_check', array( $this, 'status_check' ) );
 	}
 
 	/**
@@ -471,5 +472,76 @@ class Activation {
 				'date'         => current_time( 'mysql', 0 ),
 			)
 		);
+	}
+
+	/**
+	 * License status check.
+	 *
+	 * @return void
+	 */
+	public function status_check() {
+		global $wpdb;
+
+		// hide DB errors.
+		$wpdb->hide_errors();
+
+		// send no-cache header.
+		nocache_headers();
+
+		// set request.
+		$request = array_map( 'sanitize_text_field', apply_filters( 'license_wp_api_activation_request', $_GET ) );
+
+		// Log to file also.
+		global $wp_filesystem;
+		require_once( ABSPATH . '/wp-admin/includes/file.php' );
+		WP_Filesystem();
+		$txt      = urldecode( http_build_query( $_REQUEST, '', ', ' ) );
+		$txt      = '[' . date( 'Y-m-d H:i:s' ) . '] - ' . $txt;
+		$old_text = $wp_filesystem->get_contents( License_WP_Dir . '/log_file.txt' );
+		$text     = $old_text ? $old_text . "\n" . $txt : $txt;
+		// Need double quotes around the \n to make it work.
+		$wp_filesystem->put_contents( License_WP_Dir . '/log_file.txt', $text );
+
+		// print_r($request);
+		try {
+
+			$purchase_url = get_permalink( wc_get_page_id( 'shop' ) );
+			// check for request var.
+			if ( ! isset( $request['request'] ) || empty( $request['request'] ) ) {
+				throw new ApiException( __( 'Invalid API Request.', 'license-wp' ), 100 );
+			}
+			// check for api product ID var.
+			if ( ! isset( $request['api_product_id'] ) || empty( $request['api_product_id'] ) ) {
+				throw new ApiException( __( '<strong>Activation error:</strong> Invalid API Product ID.', 'license-wp' ), 102 );
+			}
+			// get license.
+			/** @var \Never5\LicenseWP\License\License $license */
+			$license = license_wp()->service( 'license_factory' )->make( $request['license_key'] );
+			// check if license exists.
+			if ( '' == $license->get_key() ) {
+				throw new ApiException( sprintf( __( '<strong>Activation error:</strong> The provided license is invalid. <a href="%s" target="_blank">Purchase a valid license</a> to receive updates and support.', 'license-wp' ), $purchase_url ), 101 );
+			}
+			// check if license expired.
+			if ( $license->is_expired() ) {
+				throw new ApiException( sprintf( __( '<strong>Activation error:</strong> Your license has expired. You must <a href="%s" target="_blank">renew your license</a> if you want to use it again.', 'license-wp' ), $license->get_renewal_url() ), 110 ); // @todo add renew link
+			}
+			// check if license is linked to order and if so, if the order is not refunded.
+			if ( ! $license->has_valid_order_status() ) {
+				throw new ApiException( sprintf( __( '<strong>Update error:</strong> The order used to purchase this license has an invalid status. <a href="%s" target="_blank">Purchase a valid license</a> to receive updates and support.', 'license-wp' ), $purchase_url ), 111 );
+			}
+			// get api product by given api product id (slug).
+			$api_product = $license->get_api_product_by_slug( $request['api_product_id'] );
+
+			// check if license grants access to request api product.
+			if ( null === $api_product ) {
+				throw new ApiException( sprintf( __( '<strong>Activation error:</strong> This license does not allow access to the requested product. <a href="%s" target="_blank">Purchase a valid license</a> to receive updates and support.', 'license-wp' ), $purchase_url ), 104 );
+			}
+		} catch ( ApiException $e ) {
+			header( 'Content-Type: application/json' );
+			echo $e->__toString();
+			exit;
+		}
+		// bye.
+		exit;
 	}
 }
