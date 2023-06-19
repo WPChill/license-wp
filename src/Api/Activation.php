@@ -16,6 +16,7 @@ class Activation {
 		add_action( 'woocommerce_api_wp_plugin_licencing_activation_api', array( $this, 'handle' ) );
 		add_action( 'woocommerce_api_license_wp_api_activation', array( $this, 'handle' ) );
 		add_action( 'woocommerce_api_license_wp_api_status_check', array( $this, 'status_check' ) );
+
 	}
 
 	/**
@@ -54,6 +55,7 @@ class Activation {
 			if ( ! isset( $request['request'] ) || empty( $request['request'] ) ) {
 				throw new ApiException( __( 'Invalid API Request.', 'license-wp' ), 100 );
 			}
+
 			// check for license var.
 			if ( ! isset( $request['license_key'] ) || empty( $request['license_key'] ) ) {
 				if ( empty( $request['license_key'] ) ) {
@@ -177,20 +179,19 @@ class Activation {
 
 			// If comma is in string means it is a multi extension license.
 			// $request['action_trigger'] is only set from DLM 4.8.0 and upwards for the new license logging system.
-			if ( false !== strpos( $request['api_product_id'], ',' ) || isset( $request['action_trigger'] ) ) {
+			if ( false !== strpos( $request['api_product_id'], ',' ) ) {
 				$extensions           = $license->get_api_products();
 				$available_extensions = array();
 				$licensed_extensions  = array();
+
 				foreach ( $extensions as $extension ) {
 					$available_extensions[] = $extension->get_slug();
 				}
 				$installed_extensions = explode( ',', $request['api_product_id'] );
-
 				foreach ( $installed_extensions as $extension ) {
 					$api_product                      = $license->get_api_product_by_slug( $extension );
 					$single_request                   = $request;
 					$single_request['api_product_id'] = $extension;
-
 					if ( ! empty( $api_product ) && in_array( $extension, $available_extensions ) ) {
 						$licensed_extensions[$api_product->get_slug()] = $api_product->get_name();
 
@@ -241,6 +242,7 @@ class Activation {
 			} else {
 				// get api product by given api product id (slug)
 				$api_product = $license->get_api_product_by_slug( $request['api_product_id'] );
+				//$api_product = license_wp()->service( 'api_product_factory' )->make( $request['api_product_id'] );
 
 				// check if license grants access to request api product
 				if ( null === $api_product ) {
@@ -490,19 +492,6 @@ class Activation {
 
 		// set request.
 		$request = array_map( 'sanitize_text_field', apply_filters( 'license_wp_api_activation_request', $_GET ) );
-
-		// Log to file also.
-		global $wp_filesystem;
-		require_once( ABSPATH . '/wp-admin/includes/file.php' );
-		WP_Filesystem();
-		$txt      = urldecode( http_build_query( $_REQUEST, '', ', ' ) );
-		$txt      = '[' . date( 'Y-m-d H:i:s' ) . '] - ' . $txt;
-		$old_text = $wp_filesystem->get_contents( License_WP_Dir . '/log_file.txt' );
-		$text     = $old_text ? $old_text . "\n" . $txt : $txt;
-		// Need double quotes around the \n to make it work.
-		$wp_filesystem->put_contents( License_WP_Dir . '/log_file.txt', $text );
-
-		// print_r($request);
 		try {
 
 			$purchase_url = get_permalink( wc_get_page_id( 'shop' ) );
