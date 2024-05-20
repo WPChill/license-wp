@@ -16,7 +16,7 @@ class Activation {
 		add_action( 'woocommerce_api_wp_plugin_licencing_activation_api', array( $this, 'handle' ) );
 		add_action( 'woocommerce_api_license_wp_api_activation', array( $this, 'handle' ) );
 		add_action( 'woocommerce_api_license_wp_api_status_check', array( $this, 'status_check' ) );
-
+		add_action( 'woocommerce_api_get_packages_request', array( $this, 'get_packages' ) );
 	}
 
 	/**
@@ -48,7 +48,6 @@ class Activation {
 		// print_r($request);
 
 		try {
-
 			$purchase_url = get_permalink( wc_get_page_id( 'shop' ) );
 
 			// check for request var.
@@ -133,7 +132,7 @@ class Activation {
 							'action'     => $request['request'] . $request['action_trigger'],
 							'site'       => $request['instance'],
 						);
-						$object               = wc_get_product_id_by_sku( $request['api_product_id'] );
+						$object                         = wc_get_product_id_by_sku( $request['api_product_id'] );
 						$single_request['extension_id'] = isset( $object ) ? $object : 0;
 						$this->log_api_call( $single_request );
 					}
@@ -170,7 +169,7 @@ class Activation {
 						'action'     => $request['request'] . $request['action_trigger'],
 						'site'       => $request['instance'],
 					);
-					$object               = wc_get_product_id_by_sku( $request['api_product_id'] );
+					$object                         = wc_get_product_id_by_sku( $request['api_product_id'] );
 					$single_request['extension_id'] = isset( $object ) ? $object : 0;
 					$this->log_api_call( $single_request );
 				}
@@ -193,7 +192,7 @@ class Activation {
 					$single_request                   = $request;
 					$single_request['api_product_id'] = $extension;
 					if ( ! empty( $api_product ) && in_array( $extension, $available_extensions ) ) {
-						$licensed_extensions[$api_product->get_slug()] = $api_product->get_name();
+						$licensed_extensions[ $api_product->get_slug() ] = $api_product->get_name();
 
 						switch ( $single_request['request'] ) {
 							case 'activate':
@@ -289,20 +288,18 @@ class Activation {
 
 		// bye
 		exit;
-
 	}
 
 	/**
 	 * Activate an instance of a license
 	 *
-	 * @param \Never5\LicenseWP\License\License       $license
-	 * @param \Never5\LicenseWP\ApiProduct\ApiProduct $api_product
-	 * @param array                                   $request
+	 * @param  \Never5\LicenseWP\License\License        $license
+	 * @param  \Never5\LicenseWP\ApiProduct\ApiProduct  $api_product
+	 * @param  array                                    $request
 	 *
 	 * @throws ApiException
 	 */
 	private function activate( $license, $api_product, $request, $end_activation = true ) {
-
 		// Format the instance
 		$request['instance'] = str_replace( array( 'http://', 'https://' ), '', trim( $request['instance'] ) );
 
@@ -315,13 +312,10 @@ class Activation {
 		// check & loop
 		if ( count( $existing_activations ) > 0 ) {
 			foreach ( $existing_activations as $existing_activation ) {
-
 				// check if activation is active
 				if ( $existing_activation->is_active() ) {
-
 					// add instance to array
 					$existing_active_activation_instances[] = $existing_activation->get_instance();
-
 				}
 			}
 		}
@@ -337,7 +331,6 @@ class Activation {
 		// check if request instance already exists in an activation
 		if ( count( $existing_activations ) > 0 ) {
 			foreach ( $existing_activations as $existing_activation ) {
-
 				// check if request instance equals activation instance
 				if ( $request['instance'] === $existing_activation->get_instance() ) {
 					$activation = $existing_activation;
@@ -348,7 +341,6 @@ class Activation {
 
 		// check if we got an activation for requested instance
 		if ( null === $activation ) {
-
 			// make new activation
 			/** @var \Never5\LicenseWP\Activation\Activation $activation */
 			$activation = license_wp()->service( 'activation_factory' )->make();
@@ -359,7 +351,6 @@ class Activation {
 			$activation->set_instance( $request['instance'] );
 			$activation->set_activation_date( new \DateTime() );
 			$activation->set_activation_active( 1 );
-
 		} else {
 			$activation->set_activation_date( new \DateTime() );
 			$activation->set_activation_active( 1 );
@@ -398,26 +389,22 @@ class Activation {
 	/**
 	 * Deactivates an instance of a license
 	 *
-	 * @param \Never5\LicenseWP\License\License       $license
-	 * @param \Never5\LicenseWP\ApiProduct\ApiProduct $api_product
-	 * @param array                                   $request
+	 * @param  \Never5\LicenseWP\License\License        $license
+	 * @param  \Never5\LicenseWP\ApiProduct\ApiProduct  $api_product
+	 * @param  array                                    $request
 	 *
 	 * @throws ApiException
 	 */
 	private function deactivate( $license, $api_product, $request, $end_activation = true ) {
-
 		// get activations
 		$activations = $license->get_activations( $api_product );
 
 		// check & loop
 		if ( count( $activations ) > 0 ) {
-
 			/** @var \Never5\LicenseWP\Activation\Activation $activation */
 			foreach ( $activations as $activation ) {
-
 				// check if given instance equals activation instance
 				if ( $activation->format_instance( $request['instance'] ) === $activation->get_instance() ) {
-
 					// set activation to not active
 					$activation->set_activation_active( 0 );
 
@@ -446,17 +433,71 @@ class Activation {
 					}
 				}
 			}
+
 			return;
 		}
-
 		//throw new ApiException( __( 'Deactivation error: instance not found.', 'license-wp' ), 109 );
 
 	}
 
 	/**
+	 * Retrieve packages for a license key
+	 *
+	 * @throws ApiException
+	 */
+	public function get_packages() {
+		$request = array_map( 'sanitize_text_field', apply_filters( 'license_wp_api_activation_request', $_GET ) );
+
+		// get license
+		/** @var \Never5\LicenseWP\License\License $license */
+		$license      = license_wp()->service( 'license_factory' )->make( $request['license_key'] );
+		$purchase_url = get_permalink( wc_get_page_id( 'shop' ) );
+
+		// check if license exists
+		if ( '' == $license->get_key() ) {
+			wp_send_json_error( sprintf( __( '<strong>Activation error:</strong> The provided license is invalid. <a href="%s" target="_blank">Purchase a valid license</a> to receive updates and support.', 'license-wp' ), $purchase_url ) );
+			die();
+		}
+
+		// check if license expired
+		if ( $license->is_expired() ) {
+			wp_send_json_error( sprintf( __( '<strong>Activation error:</strong> Your license has expired. You must <a href="%s" target="_blank">renew your license</a> if you want to use it again.', 'license-wp' ), $license->get_renewal_url() ) );
+			die();
+		}
+		// check if license is linked to order and if so, if the order is not refunded
+		if ( ! $license->has_valid_order_status() ) {
+			wp_send_json_error( sprintf( __( '<strong>Update error:</strong> The order used to purchase this license has an invalid status. <a href="%s" target="_blank">Purchase a valid license</a> to receive updates and support.', 'license-wp' ), $purchase_url ) );
+			die();
+		}
+
+		$extensions = $license->get_api_products();
+		foreach ( $extensions as $extension ) {
+			$download_URL = add_query_arg(
+				array(
+					'download_api_product' => $extension->get_id(),
+					'license_key'          => $license->get_key(),
+					'activation_email'     => $license->get_activation_email(),
+				), home_url( '/' )
+			);
+
+			$available_extensions[ $extension->get_slug() ] = array(
+				'product_id'    => $extension->get_slug(),
+				'name'          => $extension->get_name(),
+				'version'       => $extension->get_version(),
+				'desc'          => $extension->get_description(),
+				'download_id'   => $extension->get_id(),
+				'download_link' => $download_URL,
+			);
+		}
+
+		wp_send_json( $available_extensions );
+		exit();
+	}
+
+	/**
 	 * Add API call to log.
 	 *
-	 * @param array $args Arguments.
+	 * @param  array  $args  Arguments.
 	 *
 	 * @return void
 	 */
@@ -492,7 +533,6 @@ class Activation {
 		// set request.
 		$request = array_map( 'sanitize_text_field', apply_filters( 'license_wp_api_activation_request', $_GET ) );
 		try {
-
 			$purchase_url = get_permalink( wc_get_page_id( 'shop' ) );
 			// check for request var.
 			if ( ! isset( $request['request'] ) || empty( $request['request'] ) ) {
